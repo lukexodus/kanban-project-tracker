@@ -88,6 +88,7 @@ in_progress: 		.asciiz "IN PROGRESS: "
 review: 		.asciiz "REVIEW: "
 done: 			.asciiz "DONE: "
 deadline_prefix: 	.asciiz "(Due: "
+view_board_updated:	.asciiz "\nView Board Updated! Choose option 1 to view\n"
 
 .text
 .globl main
@@ -159,6 +160,7 @@ display_menu:
 # Returns: $v0 = user's choice (0-7)
 #----------------------------------------------------
 get_user_choice:
+
     # Save return address
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -325,6 +327,10 @@ print_priority:
     syscall
     
 end_priority_display:
+    
+    li $v0, 4
+    la $a0, view_board_updated	# Display update
+    syscall
     
     # Return to main loop
     lw $ra, 0($sp)
@@ -496,6 +502,7 @@ create_new_task:
     
     la $t2, title_buffer      # Source address
     li $t3, 0                 # Counter
+    
     
 copy_title_loop:
     beq $t3, 40, copy_title_done  # If we've copied 40 bytes, we're done
@@ -991,21 +998,21 @@ print_to_do_list:
    sw $ra, 0($sp)
 	
    li $t0, 2	# Priority level start
-   lw $t2, task_count	# Total number of tasks
-	
+   
    priority_shift_loop_to_do:
-      blt $t0, 0, print_to_do_list_done
+      blt $t0, -1, print_to_do_list_done
       
       li $t1, 0	# Counter
-   
+      lw $t2, task_count	# Total number of tasks
    to_do_list_loop:
       bge $t1, $t2, next_priority_to_do
-      
+      li $t3, 0
       # Load Task Stage
       la $t6, task_stages
       add $t7, $t6, $t1 # Offset = Index
       lb $t3, 0($t7)	#  t3 = stage
-      bne $t3, 0, skip_to_do_task  # skip if wrong stage(to do)
+ 
+      bne $t3, 0, skip_to_do_task  # skip if wrong stage
       
       # Load Task Priority
       la $t6, task_priorities
@@ -1105,7 +1112,7 @@ print_to_do_list:
    	la $a0, deadline_prefix      # Load "Due: " prefix
    	syscall
 
-   	li $t6, 6                   # Size of string (deadline length)
+   	li $t6, 10                   # Size of byte (deadline length)
    	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
    	la $t6, task_deadlines       # Load base address of task_deadlines
    	add $t6, $t6, $t7            # Add offset to get correct address for the current task
@@ -1159,12 +1166,12 @@ print_in_progress_list:
    
    in_progress_list_loop:
       bge $t1, $t2, next_priority_in_progress
-      
+      li $t3, 0
       # Load Task Stage
       la $t6, task_stages
       add $t7, $t6, $t1 # Offset = Index
       lb $t3, 0($t7)	#  t3 = stage
-      bne $t3, 1, skip_in_progress_task  # skip if wrong stage(to do)
+      bne $t3, 1, skip_in_progress_task  # skip if wrong stage
       
       # Load Task Priority
       la $t6, task_priorities
@@ -1264,7 +1271,7 @@ print_in_progress_list:
    	la $a0, deadline_prefix      # Load "Due: " prefix
    	syscall
 
-   	li $t6, 6                   # Size of string (deadline length)
+   	li $t6, 10                   # Size of byte (deadline length)
    	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
    	la $t6, task_deadlines       # Load base address of task_deadlines
    	add $t6, $t6, $t7            # Add offset to get correct address for the current task
@@ -1291,7 +1298,7 @@ print_in_progress_list:
 
    skip_in_progress_task:		# Skip current task
       addi $t1, $t1, 1
-      j to_do_list_loop
+      j in_progress_list_loop
    
    next_priority_in_progress:		# Move to lower priority
       addi $t0, $t0, -1
@@ -1318,7 +1325,7 @@ print_review_list:
    
    review_list_loop:
       bge $t1, $t2, next_priority_review
-      
+      li $t3, 0
       # Load Task Stage
       la $t6, task_stages
       add $t7, $t6, $t1 # Offset = Index
@@ -1423,7 +1430,7 @@ print_review_list:
    	la $a0, deadline_prefix      # Load "Due: " prefix
    	syscall
 
-   	li $t6, 6                   # Size of string (deadline length)
+   	li $t6, 10                   # Size of byte (deadline length)
    	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
    	la $t6, task_deadlines       # Load base address of task_deadlines
    	add $t6, $t6, $t7            # Add offset to get correct address for the current task
@@ -1477,7 +1484,7 @@ print_done_list:
    
    done_list_loop:
       bge $t1, $t2, next_priority_done
-      
+      li $t3, 0
       # Load Task Stage
       la $t6, task_stages
       add $t7, $t6, $t1 # Offset = Index
@@ -1582,7 +1589,7 @@ print_done_list:
    	la $a0, deadline_prefix      # Load "Due: " prefix
    	syscall
 
-   	li $t6, 6                   # Size of string (deadline length)
+   	li $t6, 10                   # Size of byte (deadline length)
    	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
    	la $t6, task_deadlines       # Load base address of task_deadlines
    	add $t6, $t6, $t7            # Add offset to get correct address for the current task
