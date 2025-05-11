@@ -82,11 +82,12 @@ task_deadlines:      .space 1000 # 100 * 10 bytes
 task_statuses:       .space 100  # 100 * 1 byte
 
 # View Board strings
-view_board_header: .asciiz "\n----- VIEW BOARD -----\n"
-to_do: .asciiz "TO DO: "
-in_progress: .asciiz "IN PROGRESS: "
-review: .asciiz "REVIEW: "
-done: .asciiz "DONE: "
+view_board_header: 	.asciiz "\n----- VIEW BOARD -----\n"
+to_do: 			.asciiz "TO DO: "
+in_progress: 		.asciiz "IN PROGRESS: "
+review: 		.asciiz "REVIEW: "
+done: 			.asciiz "DONE: "
+deadline_prefix: 	.asciiz "(Due: "
 
 .text
 .globl main
@@ -499,22 +500,21 @@ create_new_task:
 copy_title_loop:
     beq $t3, 40, copy_title_done  # If we've copied 40 bytes, we're done
     lb $t4, 0($t2)            # Load byte from source
-    beqz $t4, pad_spaces      # If null, pad with spaces
+    beqz $t4, pad_null      # If null, pad with null
     sb $t4, 0($t1)            # Store byte in destination
     addi $t1, $t1, 1          # Increment destination address
     addi $t2, $t2, 1          # Increment source address
     addi $t3, $t3, 1          # Increment counter
     j copy_title_loop
     
-pad_spaces:
-    li $t4, 32                # Space character
+pad_null:
+    li $t4, 0                # null character
     sb $t4, 0($t1)            # Store space in destination
     addi $t1, $t1, 1          # Increment destination address
     addi $t3, $t3, 1          # Increment counter
-    bne $t3, 40, pad_spaces   # Continue padding until we've done 40 bytes
+    bne $t3, 40, pad_null   # Continue padding until we've done 40 bytes
     
 copy_title_done:
-
     # Store task deadline (copy from deadline_buffer)
     la $t1, task_deadlines
     li $t2, 10                # Each deadline is 10 bytes
@@ -527,22 +527,22 @@ copy_title_done:
 copy_deadline_loop:
     beq $t3, 10, copy_deadline_done  # If we've copied 10 bytes, we're done
     lb $t4, 0($t2)            # Load byte from source
-    beqz $t4, pad_deadline_spaces    # If null, pad with spaces
+    beqz $t4, pad_deadline_null    # If null, store
     sb $t4, 0($t1)            # Store byte in destination
     addi $t1, $t1, 1          # Increment destination address
     addi $t2, $t2, 1          # Increment source address
     addi $t3, $t3, 1          # Increment counter
+    blt $t3, 10, copy_deadline_loop
     j copy_deadline_loop
     
-pad_deadline_spaces:
-    li $t4, 32                # Space character
-    sb $t4, 0($t1)            # Store space in destination
+pad_deadline_null:
+    li $t4, 0                # null character
+    sb $t4, 0($t1)            # Store null in destination
     addi $t1, $t1, 1          # Increment destination address
     addi $t3, $t3, 1          # Increment counter
-    bne $t3, 10, pad_deadline_spaces # Continue padding until we've done 10 bytes
+    blt $t3, 10, pad_deadline_null	# pad till  10 bytes
     
 copy_deadline_done:
-
     # Increment task_count
     lw $t0, task_count
     addi $t0, $t0, 1
@@ -1097,8 +1097,38 @@ print_to_do_list:
          
       print_to_do_title_short_done:
          li $v0, 11
-         li $a0, 10		# newline
+         li $a0, 32		# space
          syscall
+         
+      # DEADLINE
+   	li $v0, 4                    # Print string syscall
+   	la $a0, deadline_prefix      # Load "Due: " prefix
+   	syscall
+
+   	li $t6, 6                   # Size of string (deadline length)
+   	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
+   	la $t6, task_deadlines       # Load base address of task_deadlines
+   	add $t6, $t6, $t7            # Add offset to get correct address for the current task
+
+   	li $t8, 0                    # Counter for printing chars
+
+   	print_to_do_deadline_loop:
+      	lb $a0, 0($t6)             # Load a byte from the deadline string
+      	beqz $a0, print_to_do_deadline_done  # If null byte (end of string), stop printing
+      	li $v0, 11                 # Print character syscall
+      	syscall                    # Print the character
+      	addi $t6, $t6, 1           # Move to the next character
+      	addi $t8, $t8, 1           # Increment counter
+      	j print_to_do_deadline_loop      # Continue the loop
+
+   	print_to_do_deadline_done:
+      	li $v0, 11
+      	li $a0, 41		# ')' character
+      	syscall
+      	
+      	li $v0, 11
+      	li $a0, 10
+      	syscall
 
    skip_to_do_task:		# Skip current task
       addi $t1, $t1, 1
@@ -1109,10 +1139,10 @@ print_to_do_list:
       j priority_shift_loop_to_do
 	  	
    print_to_do_list_done:
-   # Return
-   lw $ra, 0($sp)
-   addi $sp, $sp, 4
-   jr $ra
+      # Return
+      lw $ra, 0($sp)
+      addi $sp, $sp, 4
+      jr $ra
 
 #---- PRINT IN PROGRESS LIST----
 print_in_progress_list:
@@ -1225,9 +1255,39 @@ print_in_progress_list:
          j print_in_progress_title_short_loop
          
       print_in_progress_title_short_done:
-         li $v0, 11
-         li $a0, 10		# newline
+      	 li $v0, 11
+         li $a0, 32		# space
          syscall
+         
+        # DEADLINE
+   	li $v0, 4                    # Print string syscall
+   	la $a0, deadline_prefix      # Load "Due: " prefix
+   	syscall
+
+   	li $t6, 6                   # Size of string (deadline length)
+   	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
+   	la $t6, task_deadlines       # Load base address of task_deadlines
+   	add $t6, $t6, $t7            # Add offset to get correct address for the current task
+
+   	li $t8, 0                    # Counter for printing chars
+
+   	print_in_progress_deadline_loop:
+      	lb $a0, 0($t6)             # Load a byte from the deadline string
+      	beqz $a0, print_in_progress_deadline_done  # If null byte (end of string), stop printing
+      	li $v0, 11                 # Print character syscall
+      	syscall                    # Print the character
+      	addi $t6, $t6, 1           # Move to the next character
+      	addi $t8, $t8, 1           # Increment counter
+      	j print_in_progress_deadline_loop      # Continue the loop
+
+   	print_in_progress_deadline_done:
+      	li $v0, 11
+      	li $a0, 41		# ')' character
+      	syscall
+      	
+      	li $v0, 11
+      	li $a0, 10
+      	syscall
 
    skip_in_progress_task:		# Skip current task
       addi $t1, $t1, 1
@@ -1355,8 +1415,38 @@ print_review_list:
          
       print_review_title_short_done:
          li $v0, 11
-         li $a0, 10		# newline
+         li $a0, 32		# space
          syscall
+         
+         # DEADLINE
+   	li $v0, 4                    # Print string syscall
+   	la $a0, deadline_prefix      # Load "Due: " prefix
+   	syscall
+
+   	li $t6, 6                   # Size of string (deadline length)
+   	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
+   	la $t6, task_deadlines       # Load base address of task_deadlines
+   	add $t6, $t6, $t7            # Add offset to get correct address for the current task
+
+   	li $t8, 0                    # Counter for printing chars
+
+   	print_review_deadline_loop:
+      	lb $a0, 0($t6)             # Load a byte from the deadline string
+      	beqz $a0, print_review_deadline_done  # If null byte (end of string), stop printing
+      	li $v0, 11                 # Print character syscall
+      	syscall                    # Print the character
+      	addi $t6, $t6, 1           # Move to the next character
+      	addi $t8, $t8, 1           # Increment counter
+      	j print_review_deadline_loop      # Continue the loop
+
+   	print_review_deadline_done:
+      	li $v0, 11
+      	li $a0, 41		# ')' character
+      	syscall
+      	
+      	li $v0, 11
+      	li $a0, 10
+      	syscall
 
    skip_review_task:		# Skip current task
       addi $t1, $t1, 1
@@ -1484,8 +1574,38 @@ print_done_list:
          
       print_done_title_short_done:
          li $v0, 11
-         li $a0, 10		# newline
+         li $a0, 32		# space
          syscall
+         
+         # DEADLINE
+   	li $v0, 4                    # Print string syscall
+   	la $a0, deadline_prefix      # Load "Due: " prefix
+   	syscall
+
+   	li $t6, 6                   # Size of string (deadline length)
+   	mul $t7, $t1, $t6            # Calculate offset for task's deadline (based on task index)
+   	la $t6, task_deadlines       # Load base address of task_deadlines
+   	add $t6, $t6, $t7            # Add offset to get correct address for the current task
+
+   	li $t8, 0                    # Counter for printing chars
+
+   	print_done_deadline_loop:
+      	lb $a0, 0($t6)             # Load a byte from the deadline string
+      	beqz $a0, print_done_deadline_done  # If null byte (end of string), stop printing
+      	li $v0, 11                 # Print character syscall
+      	syscall                    # Print the character
+      	addi $t6, $t6, 1           # Move to the next character
+      	addi $t8, $t8, 1           # Increment counter
+      	j print_done_deadline_loop      # Continue the loop
+
+   	print_done_deadline_done:
+      	li $v0, 11
+      	li $a0, 41		# ')' character
+      	syscall
+      	
+      	li $v0, 11
+      	li $a0, 10
+      	syscall
 
    skip_done_task:		# Skip current task
       addi $t1, $t1, 1
