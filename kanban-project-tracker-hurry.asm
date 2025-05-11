@@ -1,6 +1,6 @@
 # Kanban Project Progress Tracker
 # Menu System and Input Handling
-
+ 
 .data
 # Menu display strings
 menu_header:     .asciiz "\n-----------------------------------------------\n          PROJECT PROGRESS TRACKER\n-----------------------------------------------\n"
