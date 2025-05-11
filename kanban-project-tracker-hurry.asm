@@ -1,6 +1,6 @@
 # Kanban Project Progress Tracker
 # Menu System and Input Handling
- 
+
 .data
 # Menu display strings
 menu_header:     .asciiz "\n-----------------------------------------------\n          PROJECT PROGRESS TRACKER\n-----------------------------------------------\n"
@@ -89,6 +89,15 @@ review: 		.asciiz "REVIEW: "
 done: 			.asciiz "DONE: "
 deadline_prefix: 	.asciiz "(Due: "
 view_board_updated:	.asciiz "\nView Board Updated! Choose option 1 to view\n"
+
+# CSV Files
+save_file:		.asciiz "D:/Documents/ASM/save.csv"
+load_file:		.asciiz "D:/Documents/ASM/load.csv"
+csv_header:		.asciiz "ID,TITLE,PRIORITY,STAGE,DEADLINE,STATUS\n"
+file_saved:		.asciiz "\nData has been saved.\n"
+comma:			.byte 44
+converted_int:		.space 12
+newline:		.asciiz "\n"
 
 .text
 .globl main
@@ -1338,7 +1347,7 @@ print_review_list:
       lb $t4, 0($t7)
       bne $t4, $t0, skip_review_task   # skip if wrong priority
       
-      #Load Task ID
+      # Load Task ID
       la $t6, task_ids
       sll $t7, $t1, 2
       add  $t7, $t6, $t7
@@ -1732,17 +1741,226 @@ save_board:
     # Save return address
     addi $sp, $sp, -4
     sw $ra, 0($sp)
+
+    li $v0, 13        # Open a file
+    la $a0, save_file    # Address of the file name
+    li $a1, 1        # Write-only mode
+    li $a2,  0
+    syscall
+
+    move $t0, $v0    # store fd to $t0
+    move $a0, $t0    # store fd to $a0
+    la $a1, csv_header    # Address of header
+    li $a2, 40        # Header length
+    li $v0, 15
+    syscall
+
+    li $t1, 0        # Counter
+    lw $t2, task_count    # No. of tasks
+
+save_task_loop:
+    bge $t1, $t2, save_task_done
+
+    # ID
+    la $t3, task_ids
+    sll $t4, $t1, 2    # Offset
+    add $t5, $t3, $t4
+    lw $a0, 0($t5)    # $a0 = Task ID
+    jal int_to_str
+
+    move $a1, $a0	# $a1 contains converted int
+    move $a0, $t0	# $a0 contains fd
+    li $a2, 10		# $a2 contains size of byte/length
+    li $v0, 15
+    syscall
+
+    move $a0, $t0	
+    la $a1, comma	# Write comma
+    li $a2, 1
+    li $v0, 15
+    syscall
+
+    # TITLE
+    la $t3, task_titles
+    mul $t4, $t1, 40
+    add $t5, $t3, $t4
+    move $a0, $t5
     
-    # Display "not implemented" message
-    li $v0, 4
-    la $a0, not_implemented
+    move $a1, $a0
+    move $a0, $t0	# $a0 contains fd
+    li $a2, 40		# $a2 contains size of byte/length
+    li $v0, 15
+    syscall
+    
+    move $a0, $t0
+    la $a1, comma
+    li $a2, 1
+    li $v0, 15
+    syscall
+
+    # PRIORITY
+    la $t3, task_priorities
+    add $t5, $t3, $t1
+    lb $a0, 0($t5)
+    jal int_to_str
+    
+    move $a1, $a0	# $a1 contains converted int
+    move $a0, $t0	# $a0 contains fd
+    li $a2, 10		# $a2 contains size of byte/length
+    li $v0, 15
+    syscall
+
+    move $a0, $t0
+    la $a1, comma
+    li $a2, 1
+    li $v0, 15
+    syscall
+
+    # STAGE
+    la $t3, task_stages
+    add $t5, $t3, $t1
+    lb $a0, 0($t5)
+    jal int_to_str
+    
+    move $a1, $a0	# $a1 contains converted int
+    move $a0, $t0	# $a0 contains fd
+    li $a2, 10		# $a2 contains size of byte/length
+    li $v0, 15
+    syscall
+
+    move $a0, $t0
+    la $a1, comma
+    li $a2, 1
+    li $v0, 15
+    syscall
+
+    # DEADLINE
+    la $t3, task_deadlines
+    mul $t4, $t1, 10
+    add $t5, $t3, $t4
+    move $a0, $t5
+
+    move $a1, $a0
+    move $a0, $t0	# $a0 contains fd
+    li $a2, 6		# $a2 contains size of byte/length
+    li $v0, 15
+    syscall
+
+    move $a0, $t0
+    la $a1, comma
+    li $a2, 1
+    li $v0, 15
+    syscall
+
+    # STATUS
+    la $t3,  task_statuses
+    add $t5, $t3, $t1
+    lb $a0, 0($t5)
+    jal int_to_str
+    
+    move $a1, $a0	# $a1 contains converted int
+    move $a0, $t0	# $a0 contains fd
+    li $a2, 10		# $a2 contains size of byte/length
+    li $v0, 15
+    syscall
+
+    la $a1, newline	# Write newline
+    li $a2, 1
+    li $v0, 15
+    syscall
+    
+
+    addi $t1, $t1, 1	# Increment task counter
+    j save_task_loop
+
+save_task_done:
+    li $v0, 16		# Close file
+    move $a0, $t0	
+    syscall
+    
+    li $v0, 11
+    li $a0, 10
+    syscall
+    
+    li $v0, 4		# Data has been saved notif
+    la $a0, file_saved
     syscall
     
     # Return to main loop
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     j main_loop
-
+    
+int_to_str:
+    # Save return address
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+     
+    la $t6, converted_int	# Load address of buffer
+    li $t7, 12			# Size of bytes
+    
+    # Clear converted_int buffer
+clear_loop:
+    sb $zero, 0($t6)		# Store null byte in the buffer
+    addi $t6, $t6, 1		# Buffer pointer to next position
+    addi $t7, $t7, -1		# Decrease count
+    bnez $t7, clear_loop	# Continue clearing if counter is not zero
+    
+    li $t6, 10			# Base 10
+    la $t7, converted_int		# POINTER
+    move $t8, $a0			# TEMP
+    li $t9, 0				# STRLEN
+    beqz $t8, int_zero_case	# If number is 0, jump to label
+    
+    # Conversion proper
+    convert:	
+       divu $t8, $t6		# Divide by 10
+       mflo $t8			# Quotient
+       mfhi $s0			# Remainder
+       
+       addi $s0, $s0, 48	# Convert digit into its ASCII counterpart
+       sb $s0, 0($t7)		# Store char in the buffer
+       addi $t7, $t7, 1		# Buffer pointer to next position
+       addi $t9, $t9, 1		# Increment strlen counter
+       bnez $t8, convert	# if quotient not zero, loop
+       j reverse
+       
+    int_zero_case:
+       li $s0, 48
+       sb $s0, 0($t7)
+       addi $t7, $t7, 1 
+       li $t9, 1
+       
+    # Reverse string to correct order  
+    reverse:
+       sb $zero, 0($t7)		# Store null terminator at the end
+       la $s0, converted_int	# $s0 points to start of string
+       move $s1, $s0		# $s0=$s1
+       add $s2, $s0, $t9	# $s2 points to end of string
+       addi $s2 $s2, -1		# move $s2 backwards
+    
+    # Swapping loop 
+    rev_loop:
+       bge $s1, $s2, int_to_str_done	# If $s1 >= $s2, done
+       
+       lb $t6, 0($s1)	# lb from start of string
+       lb $t7, 0($s2)	# lb from end of string
+       
+       sb $t7, 0($s1)	# sb from $t7 to start
+       sb $t6, 0($s2)	# sb from $t6 to end
+       
+       addi $s1, $s1, 1   # Increment start pointer
+       addi $s2, $s2, -1  # Decrement end pointer
+       j rev_loop
+       
+    int_to_str_done:
+    la $a0, converted_int
+    # Return to main loop
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
 load_board:
     # Save return address
     addi $sp, $sp, -4
