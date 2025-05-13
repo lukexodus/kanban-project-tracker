@@ -43,10 +43,28 @@ task_deleted:        .asciiz "\n→ Task \""
 task_deleted_mid:    .asciiz "\" has been deleted.\n"
 delete_cancelled:    .asciiz "\n→ Delete operation cancelled.\n"
 
+# View Board strings
+board_header:        .asciiz "\n-----------------------------------------------------\n                   KANBAN BOARD\n-----------------------------------------------------\n"
+board_footer:        .asciiz "-----------------------------------------------------\n"
+todo_header:         .asciiz "TO DO:    \n"
+inprogress_header:   .asciiz "IN PROGRESS:\n"
+review_header:       .asciiz "REVIEW:\n"
+done_header:         .asciiz "DONE:\n"
+empty_stage:         .asciiz " (empty)\n"
+no_tasks_board:      .asciiz "\nThere are no tasks on the board.\n"
+press_enter:         .asciiz "\nPress Enter to continue..."
+priority_high:       .asciiz "[!] "
+priority_medium:     .asciiz "[-] "
+priority_low:        .asciiz "[ ] "
+due_marker:          .asciiz " (Due: "
+done_marker:         .asciiz " (Done: "
+close_paren:         .asciiz ")"
+
 # Buffers for user input
 input_buffer:        .space 4
 title_buffer:        .space 41   # 40 chars + null terminator
 deadline_buffer:     .space 6    # 5 chars (DD-MM) + null terminator
+continue_buffer:     .space 2    # For "press enter to continue"
 
 # Task storage
 # Maximum 100 tasks, each task structure is:
@@ -178,15 +196,363 @@ view_board:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    # Display "not implemented" message
+    # Check if there are any active tasks
+    jal count_active_tasks
+    # $v0 now contains the number of active tasks
+    
+    beqz $v0, no_active_tasks
+    
+    # Display board header
     li $v0, 4
-    la $a0, not_implemented
+    la $a0, board_header
+    syscall
+    
+    # Display each stage
+    li $a0, 0     # Stage 0: To Do
+    jal display_stage_tasks
+    
+    li $a0, 1     # Stage 1: In Progress
+    jal display_stage_tasks
+    
+    li $a0, 2     # Stage 2: Review
+    jal display_stage_tasks
+    
+    li $a0, 3     # Stage 3: Done
+    jal display_stage_tasks
+    
+    # Display board footer
+    li $v0, 4
+    la $a0, board_footer
+    syscall
+    
+    # Wait for user to press Enter to continue
+    la $a0, press_enter
+    syscall
+    
+    li $v0, 8
+    la $a0, continue_buffer
+    li $a1, 2
     syscall
     
     # Return to main loop
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     j main_loop
+    
+no_active_tasks:
+    # Display message
+    li $v0, 4
+    la $a0, no_tasks_board
+    syscall
+    
+    # Return to main loop
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    j main_loop
+
+#----------------------------------------------------
+# Count active tasks
+# Returns: $v0 = number of active tasks
+#----------------------------------------------------
+count_active_tasks:
+    # Save return address
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    # Initialize counter
+    li $v0, 0     # Active task counter
+    li $t0, 0     # Task index
+    lw $t1, task_count  # Total number of tasks
+    
+    # Loop through tasks
+    count_active_loop:
+        beq $t0, $t1, count_active_done  # If we've processed all tasks, we're done
+        
+        # Check if the task is active
+        la $t2, task_statuses
+        add $t2, $t2, $t0       # Offset to task status
+        lb $t3, 0($t2)          # Load status
+        bnez $t3, skip_count    # If status is not 0 (Active), skip this task
+        
+        # Task is active, increment counter
+        addi $v0, $v0, 1
+        
+    skip_count:
+        addi $t0, $t0, 1        # Move to next task
+        j count_active_loop
+        
+    count_active_done:
+        # Return - $v0 already contains the count
+        lw $ra, 0($sp)
+        addi $sp, $sp, 4
+        jr $ra
+
+#----------------------------------------------------
+# Display tasks for a specific stage
+# Parameters: $a0 = stage (0=To Do, 1=In Progress, 2=Review, 3=Done)
+#----------------------------------------------------
+display_stage_tasks:
+    # Save return address and stage
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    
+    # Display stage header based on $a0
+    beq $a0, 0, display_todo_header
+    beq $a0, 1, display_inprogress_header
+    beq $a0, 2, display_review_header
+    beq $a0, 3, display_done_header
+    j stage_header_done         # Should never happen
+    
+display_todo_header:
+    li $v0, 4
+    la $a0, todo_header
+    syscall
+    j stage_header_done
+    
+display_inprogress_header:
+    li $v0, 4
+    la $a0, inprogress_header
+    syscall
+    j stage_header_done
+    
+display_review_header:
+    li $v0, 4
+    la $a0, review_header
+    syscall
+    j stage_header_done
+    
+display_done_header:
+    li $v0, 4
+    la $a0, done_header
+    syscall
+    
+stage_header_done:
+    # Restore stage to $a0
+    lw $a0, 4($sp)
+    
+    # Count tasks in this stage
+    jal count_tasks_in_stage
+    # $v0 now contains the number of tasks in the stage
+    
+    beqz $v0, stage_empty
+    
+    # There are tasks in this stage, display them
+    # Initialize variables
+    li $t0, 0                   # Task index
+    lw $t1, task_count          # Total number of tasks
+    li $t9, 1                   # Task number counter (for display)
+    
+    # Loop through tasks
+    stage_tasks_loop:
+        beq $t0, $t1, stage_tasks_done  # If we've processed all tasks, we're done
+        
+        # Check if the task is active and in the current stage
+        la $t2, task_statuses
+        add $t2, $t2, $t0       # Offset to task status
+        lb $t3, 0($t2)          # Load status
+        bnez $t3, skip_stage_task  # If status is not 0 (Active), skip this task
+        
+        la $t2, task_stages
+        add $t2, $t2, $t0       # Offset to task stage
+        lb $t3, 0($t2)          # Load stage
+        lw $t4, 4($sp)          # Load stage parameter
+        bne $t3, $t4, skip_stage_task  # If not in current stage, skip this task
+        
+        # Task is active and in the current stage, display it
+        # Print task number
+        li $v0, 11              # Print character syscall
+        li $a0, 32              # Space character
+        syscall
+        li $a0, 91              # '[' character
+        syscall
+        
+        li $v0, 1               # Print integer syscall
+        move $a0, $t9           # Task number for display
+        syscall
+        
+        li $v0, 11              # Print character syscall
+        li $a0, 93              # ']' character
+        syscall
+        li $a0, 32              # Space character
+        syscall
+        
+        # Print priority indicator
+        la $t2, task_priorities
+        add $t2, $t2, $t0       # Offset to task priority
+        lb $t3, 0($t2)          # Load priority
+        
+        li $v0, 4               # Print string syscall
+        beq $t3, 0, print_low_priority
+        beq $t3, 1, print_medium_priority
+        beq $t3, 2, print_high_priority
+        j priority_printed      # Should never happen
+        
+    print_low_priority:
+        la $a0, priority_low
+        syscall
+        j priority_printed
+        
+    print_medium_priority:
+        la $a0, priority_medium
+        syscall
+        j priority_printed
+        
+    print_high_priority:
+        la $a0, priority_high
+        syscall
+        
+    priority_printed:
+        # Print task title
+        la $t2, task_titles
+        li $t3, 40              # Each title is 40 bytes
+        mul $t4, $t0, $t3       # Calculate offset
+        add $t2, $t2, $t4       # Address of title
+        
+        # Find the length of the title (exclude trailing spaces)
+        move $t3, $t2           # Copy address to $t3
+        li $t4, 0               # Counter
+        li $t5, 39              # Maximum title length - 1
+        
+    find_title_end:
+        beq $t4, $t5, title_end_found  # If we've checked all chars, we're done
+        add $t6, $t3, $t5       # Address of last character
+        lb $t7, 0($t6)          # Load character
+        bne $t7, 32, title_end_found  # If not space, we've found the end
+        addi $t5, $t5, -1       # Move backward
+        j find_title_end
+        
+    title_end_found:
+        # Now $t5 contains the index of the last non-space character
+        # Print the title (up to the length we calculated)
+        li $t4, 0               # Counter
+        
+    print_title_loop:
+        bgt $t4, $t5, title_printed  # If we've printed all chars, we're done
+        lb $a0, 0($t2)          # Load character
+        li $v0, 11              # Print character syscall
+        syscall
+        addi $t2, $t2, 1        # Move to next character
+        addi $t4, $t4, 1        # Increment counter
+        j print_title_loop
+        
+    title_printed:
+        # Print deadline
+        lw $t4, 4($sp)          # Load stage parameter
+        beq $t4, 3, print_done_date  # If stage is Done, print Done instead of Due
+        
+        li $v0, 4               # Print string syscall
+        la $a0, due_marker
+        syscall
+        j print_date
+        
+    print_done_date:
+        li $v0, 4               # Print string syscall
+        la $a0, done_marker
+        syscall
+        
+    print_date:
+        # Print deadline date
+        la $t2, task_deadlines
+        li $t3, 10              # Each deadline is 10 bytes
+        mul $t4, $t0, $t3       # Calculate offset
+        add $t2, $t2, $t4       # Address of deadline
+        
+        # Print the date (DD-MM format)
+        lb $a0, 0($t2)          # Load first character
+        li $v0, 11              # Print character syscall
+        syscall
+        
+        lb $a0, 1($t2)          # Load second character
+        syscall
+        
+        lb $a0, 2($t2)          # Load third character (should be '-')
+        syscall
+        
+        lb $a0, 3($t2)          # Load fourth character
+        syscall
+        
+        lb $a0, 4($t2)          # Load fifth character
+        syscall
+        
+        # Print closing parenthesis
+        li $v0, 4               # Print string syscall
+        la $a0, close_paren
+        syscall
+        
+        # Print newline
+        li $v0, 11              # Print character syscall
+        li $a0, 10              # Newline character
+        syscall
+        
+        # Increment task number counter
+        addi $t9, $t9, 1
+        
+    skip_stage_task:
+        addi $t0, $t0, 1        # Move to next task
+        j stage_tasks_loop
+        
+    stage_tasks_done:
+        # Return
+        lw $ra, 0($sp)
+        addi $sp, $sp, 8
+        jr $ra
+        
+    stage_empty:
+        # Print empty stage message
+        li $v0, 4
+        la $a0, empty_stage
+        syscall
+        
+        # Return
+        lw $ra, 0($sp)
+        addi $sp, $sp, 8
+        jr $ra
+
+#----------------------------------------------------
+# Count tasks in a specific stage
+# Parameters: $a0 = stage (0=To Do, 1=In Progress, 2=Review, 3=Done)
+# Returns: $v0 = number of active tasks in the stage
+#----------------------------------------------------
+count_tasks_in_stage:
+    # Save return address
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)         # Save stage parameter
+    
+    # Initialize counter
+    li $v0, 0              # Tasks in stage counter
+    li $t0, 0              # Task index
+    lw $t1, task_count     # Total number of tasks
+    
+    # Loop through tasks
+    count_stage_loop:
+        beq $t0, $t1, count_stage_done  # If we've processed all tasks, we're done
+        
+        # Check if the task is active and in the current stage
+        la $t2, task_statuses
+        add $t2, $t2, $t0       # Offset to task status
+        lb $t3, 0($t2)          # Load status
+        bnez $t3, skip_stage_count  # If status is not 0 (Active), skip this task
+        
+        la $t2, task_stages
+        add $t2, $t2, $t0       # Offset to task stage
+        lb $t3, 0($t2)          # Load stage
+        lw $t4, 4($sp)          # Load stage parameter
+        bne $t3, $t4, skip_stage_count  # If not in current stage, skip this task
+        
+        # Task is active and in the current stage, increment counter
+        addi $v0, $v0, 1
+        
+    skip_stage_count:
+        addi $t0, $t0, 1        # Move to next task
+        j count_stage_loop
+        
+    count_stage_done:
+        # Return - $v0 already contains the count
+        lw $ra, 0($sp)
+        addi $sp, $sp, 8
+        jr $ra
 
 add_task:
     # Save return address
@@ -616,13 +982,13 @@ title_length_done:
     move $a1, $t3           # Length of title
     li $v0, 11              # Print character syscall
     
-print_title_loop:
+delete_task_print_title_loop :
     beqz $a1, print_title_done  # If length is 0, we're done
     lb $a0, 0($t1)              # Load character
     syscall                     # Print character
     addi $t1, $t1, 1            # Move to next character
     addi $a1, $a1, -1           # Decrement counter
-    j print_title_loop
+    j delete_task_print_title_loop 
     
 print_title_done:
     # Print the rest of the message
