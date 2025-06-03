@@ -1,0 +1,58 @@
+Chars ASCII Codes
+cr	13
+lf	10
+comma	44
+
+
+----------------
+# For create_new_task
+
+
+
+
+-----------------
+# For load_board:
+
+$s0	bytes read
+$s1	cursor (initialized at file_buffer)
+$s7	row counter (starts at 1 after header)
+
+
+## Header parsing
+$t1 	cursor for in parsing header
+
+
+## Line parsing (parse_csv_line)
+$a0	start of line
+$t1	task count
+$t2	cursor
+
+
+### ID	(parsed as int)
+$t3	task_ids and later its offset
+$t5	accumulated value (int)
+
+### Title (parsed as string)
+$t3	task_titles and later its offset
+$t4	char counter
+$t5	one char
+
+### Priority, Stage, Status (parsed as int)
+$t3	task_[key] and later its offset
+$t5	int value
+
+### Deadline (parsed as string)
+$t3	task_deadlines and later its offset
+$t4	char counter
+$t5	one char
+
+
+-------
+
+# Task arrays
+task_ids:            .space 200  # 100 * 1 bytes (halfword)
+task_titles:         .space 4000 # 100 * 40 bytes
+task_priorities:     .space 100  # 100 * 1 byte
+task_stages:         .space 100  # 100 * 1 byte
+task_deadlines:      .space 1000 # 100 * 10 bytes
+task_statuses:       .space 100  # 100 * 1 byte
