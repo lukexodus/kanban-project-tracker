@@ -77,6 +77,14 @@ deadline_buffer:     .space 12   # 10 chars (MM-DD-YYYY) + newline + null termin
 continue_buffer:     .space 2    # For "press enter to continue"
 task_id_buffer:      .space 12   # Buffer for task ID input
 
+# Log file strings for task completion logging
+log_checkmark:       .asciiz "✓ "
+log_priority_prefix: .asciiz " - Priority: "
+log_deadline_prefix: .asciiz " - Deadline: "
+log_low_priority:    .asciiz "Low"
+log_medium_priority: .asciiz "Medium"
+log_high_priority:   .asciiz "High"
+
 # Task storage
 # Maximum 100 tasks, each task structure is:
 # - ID (2 bytes)
@@ -1348,6 +1356,153 @@ have_tasks_move:
     # $t1 contains which stage field to move to
     move $t1, $v0
     
+    # Check if task is being moved to DONE (stage 3)
+    beq $t1, 3, log_task_completion
+    j skip_logging
+    
+log_task_completion:
+    # Open log file for appending
+    li $v0, 13          # Open file syscall
+    la $a0, log_file    # Log file path
+    li $a1, 9           # Append mode
+    li $a2, 0           # No special permissions
+    syscall
+    
+    bltz $v0, skip_logging  # If file open failed, skip logging
+    move $s6, $v0       # Save file descriptor
+    
+    # Write "✓ " to log file
+    move $a0, $s6
+    la $a1, buffer      # Use buffer for the checkmark
+    li $t9, 226         # UTF-8 byte 1 for ✓
+    sb $t9, 0($a1)
+    li $t9, 156         # UTF-8 byte 2 for ✓
+    sb $t9, 1($a1)
+    li $t9, 147         # UTF-8 byte 3 for ✓
+    sb $t9, 2($a1)
+    li $t9, 32          # Space
+    sb $t9, 3($a1)
+    li $a2, 4           # Write 4 bytes
+    li $v0, 15
+    syscall
+    
+    # Write task title to log
+    la $t3, task_titles
+    li $t4, 40
+    mul $t5, $t0, $t4
+    add $t3, $t3, $t5
+    
+    # Find actual length of title (excluding trailing spaces/nulls)
+    move $t4, $t3
+    li $t5, 0
+    li $t6, 40
+    
+find_title_length_log:
+    beq $t5, $t6, write_title_to_log
+    lb $t7, 0($t4)
+    beqz $t7, write_title_to_log
+    beq $t7, 32, check_trailing_spaces_log
+    addi $t4, $t4, 1
+    addi $t5, $t5, 1
+    j find_title_length_log
+    
+check_trailing_spaces_log:
+    # Check if rest are spaces
+    move $t8, $t4
+    move $t9, $t5
+    
+check_spaces_loop_log:
+    beq $t9, $t6, title_ends_with_spaces_log
+    lb $s2, 0($t8)
+    beqz $s2, title_ends_with_spaces_log
+    bne $s2, 32, continue_title_log
+    addi $t8, $t8, 1
+    addi $t9, $t9, 1
+    j check_spaces_loop_log
+    
+title_ends_with_spaces_log:
+    j write_title_to_log
+    
+continue_title_log:
+    addi $t4, $t4, 1
+    addi $t5, $t5, 1
+    j find_title_length_log
+    
+write_title_to_log:
+    move $a0, $s6
+    move $a1, $t3
+    move $a2, $t5
+    li $v0, 15
+    syscall
+    
+    # Write ' – Priority: '
+    move $a0, $s6
+    la $a1, log_priority_prefix
+    li $a2, 15          # Length of ' - Priority: '
+    li $v0, 15
+    syscall
+    
+    # Write priority level
+    la $t3, task_priorities
+    add $t3, $t3, $t0
+    lb $t4, 0($t3)
+    
+    move $a0, $s6
+    beq $t4, 0, write_low_priority_log
+    beq $t4, 1, write_medium_priority_log
+    beq $t4, 2, write_high_priority_log
+    
+write_low_priority_log:
+    la $a1, log_low_priority
+    li $a2, 3           # Length of "Low"
+    j write_priority_done_log
+    
+write_medium_priority_log:
+    la $a1, log_medium_priority
+    li $a2, 6           # Length of "Medium"
+    j write_priority_done_log
+    
+write_high_priority_log:
+    la $a1, log_high_priority
+    li $a2, 4           # Length of "High"
+    
+write_priority_done_log:
+    li $v0, 15
+    syscall
+    
+    # Write ' – Deadline: '
+    move $a0, $s6
+    la $a1, log_deadline_prefix
+    li $a2, 15          # Length of ' - Deadline: '
+    li $v0, 15
+    syscall
+    
+    # Write deadline
+    la $t3, task_deadlines
+    li $t4, 10
+    mul $t5, $t0, $t4
+    add $t3, $t3, $t5
+    
+    move $a0, $s6
+    move $a1, $t3
+    li $a2, 10
+    li $v0, 15
+    syscall
+    
+    # Write newline
+    move $a0, $s6
+    la $a1, newline
+    li $a2, 2
+    li $v0, 15
+    syscall
+    
+    # Close log file
+    li $v0, 16
+    move $a0, $s6
+    syscall
+    
+skip_logging:
+    
     # Moving proper
     la $t2, task_stages
     
@@ -2356,9 +2511,86 @@ view_history:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    # Display "not implemented" message
+    # Try to open the log file
+    li $v0, 13            # Open file syscall
+    la $a0, log_file      # Log file path
+    li $a1, 0             # Read-only mode
+    li $a2, 0             # No special permissions
+    syscall
+    
+    # Check if file was opened successfully
+    bltz $v0, log_file_not_found
+    
+    # File opened successfully
+    move $t0, $v0         # Save file descriptor
+    
+    # Display header
     li $v0, 4
-    la $a0, not_implemented
+    la $a0, view_board_header
+    syscall
+    
+    # Read and display the entire log file
+    move $a0, $t0         # File descriptor
+    la $a1, file_buffer   # Use the same buffer as load_board
+    lw $a2, FILE_BUFFER_SIZE # Buffer size (8KB)
+    li $v0, 14            # Read file syscall
+    syscall
+    
+    # $v0 now contains number of bytes read
+    move $t1, $v0         # Save bytes read
+    
+    # Close the file
+    li $v0, 16            # Close file syscall
+    move $a0, $t0         # File descriptor
+    syscall
+    
+    # Check if any content was read
+    beqz $t1, log_file_empty
+    
+    # Display the log content
+    la $t2, file_buffer   # Start of buffer
+    li $t3, 0             # Byte counter
+    
+print_log_loop:
+    bge $t3, $t1, log_display_done  # If we've printed all bytes, done
+    lb $a0, 0($t2)                  # Load character
+    li $v0, 11                      # Print character syscall
+    syscall
+    addi $t2, $t2, 1                # Move to next character
+    addi $t3, $t3, 1                # Increment counter
+    j print_log_loop
+    
+log_display_done:
+    # Wait for user to press Enter to continue
+    li $v0, 4
+    la $a0, press_enter
+    syscall
+    
+    li $v0, 8
+    la $a0, continue_buffer
+    li $a1, 2
+    syscall
+    
+    # Return to main loop
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    j main_loop
+    
+log_file_not_found:
+    # Display error message
+    li $v0, 4
+    la $a0, file_not_found
+    syscall
+    
+    # Return to main loop
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    j main_loop
+    
+log_file_empty:
+    # Display message for empty log
+    li $v0, 4
+    la $a0, no_tasks_board
     syscall
     
     # Return to main loop
