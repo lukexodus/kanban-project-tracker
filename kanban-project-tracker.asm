@@ -154,7 +154,7 @@ main:
     # Main program loop
     main_loop:
 
-	# Display welcome message when program first starts
+        # Display welcome message when program first starts
     	jal display_menu
 
         # Get user choice
@@ -211,6 +211,18 @@ display_menu:
 # Gets the user's menu choice with validation
 # Returns: $v0 = user's choice (0-7)
 #----------------------------------------------------
+# FUNCTION get_user_choice():
+#     REPEAT
+#         PRINT "Choose an option: "
+#         READ input_string
+        
+#         IF input_string is single digit 0-5 THEN
+#             RETURN digit_value
+#         ELSE
+#             PRINT "Invalid option. Please try again."
+#         END IF
+#     UNTIL valid_input
+# END FUNCTION
 get_user_choice:
     # Save return address
     addi $sp, $sp, -4
@@ -267,6 +279,31 @@ invalid_input:
 # Validate task ID with string parsing first
 # Returns: $v0 = validated task ID (index in arrays)
 #----------------------------------------------------
+# FUNCTION validate_task_id():
+#     REPEAT
+#         PRINT "Enter Task Number: "
+#         READ task_id_string
+        
+#         parsed_id = parse_task_id_string(task_id_string)
+        
+#         IF parsed_id = INVALID THEN
+#             PRINT "Invalid characters in input"
+#             CONTINUE
+#         END IF
+        
+#         IF parsed_id < 0 OR parsed_id >= task_count THEN
+#             PRINT "Invalid task number"
+#             CONTINUE
+#         END IF
+        
+#         IF task_statuses[parsed_id] != ACTIVE THEN
+#             PRINT "Invalid task number"
+#             CONTINUE
+#         END IF
+        
+#         RETURN parsed_id
+#     UNTIL valid_task_id
+# END FUNCTION
 validate_task_id:
     # Save return address
     addi $sp, $sp, -4
@@ -443,6 +480,23 @@ string_too_long:
 #----------------------------------------------------
 # Menu option handlers (placeholders for now)
 #----------------------------------------------------
+# FUNCTION view_board():
+#     active_count = count_active_tasks()
+    
+#     IF active_count = 0 THEN
+#         PRINT "No tasks on board"
+#         RETURN
+#     END IF
+    
+#     PRINT board_header
+    
+#     FOR each_stage FROM 0 TO 3:
+#         CALL display_stage_tasks(stage)
+#     END FOR
+    
+#     PRINT board_footer
+#     WAIT for_enter_key
+# END FUNCTION
 view_board:
     # Save return address
     addi $sp, $sp, -4
@@ -506,6 +560,15 @@ no_active_tasks:
 # Count active tasks
 # Returns: $v0 = number of active tasks
 #----------------------------------------------------
+# FUNCTION count_active_tasks():
+#     count = 0
+#     FOR each_task FROM 0 TO task_count-1:
+#         IF task_statuses[task] = ACTIVE THEN
+#             count++
+#         END IF
+#     END FOR
+#     RETURN count
+# END FUNCTION
 count_active_tasks:
     # Save return address
     addi $sp, $sp, -4
@@ -543,6 +606,36 @@ count_active_tasks:
 # Display tasks for a specific stage
 # Parameters: $a0 = stage (0=To Do, 1=In Progress, 2=Review, 3=Done)
 #----------------------------------------------------
+# FUNCTION display_stage_tasks(stage):
+#     stage_names = ["TO DO", "IN PROGRESS", "REVIEW", "DONE"]
+#     PRINT stage_names[stage]
+    
+#     task_count = count_tasks_in_stage(stage)
+    
+#     IF task_count = 0 THEN
+#         PRINT "(empty)"
+#         RETURN
+#     END IF
+    
+#     task_number = 1
+#     FOR each_task_index FROM 0 TO total_tasks-1:
+#         IF task_statuses[task_index] = ACTIVE AND 
+#            task_stages[task_index] = stage THEN
+            
+#             PRINT "[" + task_number + "] "
+#             PRINT priority_indicator[task_priorities[task_index]]
+#             PRINT task_titles[task_index] (trimmed)
+            
+#             IF stage = DONE THEN
+#                 PRINT " (Done: " + task_deadlines[task_index] + ")"
+#             ELSE
+#                 PRINT " (Due: " + task_deadlines[task_index] + ")"
+#             END IF
+            
+#             task_number++
+#         END IF
+#     END FOR
+# END FUNCTION
 display_stage_tasks:
     # Save return address and stage
     addi $sp, $sp, -8
@@ -763,6 +856,16 @@ stage_header_done:
 # Parameters: $a0 = stage (0=To Do, 1=In Progress, 2=Review, 3=Done)
 # Returns: $v0 = number of active tasks in the stage
 #----------------------------------------------------
+# FUNCTION count_tasks_in_stage(stage):
+#     count = 0
+#     FOR each_task FROM 0 TO task_count-1:
+#         IF task_statuses[task] = ACTIVE AND 
+#            task_stages[task] = stage THEN
+#             count++
+#         END IF
+#     END FOR
+#     RETURN count
+# END FUNCTION
 count_tasks_in_stage:
     # Save return address
     addi $sp, $sp, -8
@@ -803,6 +906,16 @@ count_tasks_in_stage:
         addi $sp, $sp, 8
         jr $ra
 
+# FUNCTION add_task():
+#     PRINT "ADD NEW TASK"
+    
+#     title = get_task_title()         // Get and validate title
+#     priority = get_task_priority()   // Get priority (0-2)
+#     deadline = get_task_deadline()   // Get MM-DD-YYYY format
+    
+#     CALL create_new_task(title, priority, deadline)
+#     PRINT "Task added to TO DO with [priority] priority"
+# END FUNCTION
 add_task:
     # Save return address
     addi $sp, $sp, -4
@@ -872,6 +985,19 @@ end_priority_display:
 #----------------------------------------------------
 # Get task title from user
 #----------------------------------------------------
+# FUNCTION get_task_title():
+#     REPEAT
+#         PRINT "Enter Task Title: "
+#         READ title_string
+        
+#         IF title_length > 0 AND title_length <= 40 AND 
+#            title does not contain commas THEN
+#             RETURN title_string
+#         ELSE
+#             PRINT appropriate_error_message
+#         END IF
+#     UNTIL valid_title
+# END FUNCTION
 get_task_title:
     # Save return address
     addi $sp, $sp, -4
@@ -967,6 +1093,18 @@ title_too_long:
 # Get task priority from user (0=Low, 1=Medium, 2=High)
 # Returns: $v0 = priority value
 #----------------------------------------------------
+# FUNCTION get_task_priority():
+#     REPEAT
+#         PRINT "Enter Priority (0=Low, 1=Medium, 2=High): "
+#         READ priority_string
+        
+#         IF priority_string is single digit 0-2 THEN
+#             RETURN digit_value
+#         ELSE
+#             PRINT "Invalid priority. Please enter 0, 1, or 2."
+#         END IF
+#     UNTIL valid_priority
+# END FUNCTION
 get_task_priority:
     # Save return address
     addi $sp, $sp, -4
@@ -1022,6 +1160,18 @@ invalid_priority:
 #----------------------------------------------------
 # Get task deadline from user (MM-DD-YYYY format)
 #----------------------------------------------------
+# FUNCTION get_task_deadline():
+#     REPEAT
+#         PRINT "Enter Deadline (MM-DD-YYYY): "
+#         READ deadline_string
+        
+#         IF deadline_string matches MM-DD-YYYY format THEN
+#             RETURN deadline_string
+#         ELSE
+#             PRINT "Invalid date format. Please use MM-DD-YYYY"
+#         END IF
+#     UNTIL valid_deadline
+# END FUNCTION
 get_task_deadline:
     # Save return address
     addi $sp, $sp, -4
@@ -1137,6 +1287,25 @@ deadline_invalid_format:
 #----------------------------------------------------
 # Create a new task and add it to the task arrays
 #----------------------------------------------------
+# FUNCTION create_new_task(title, priority, deadline):
+#     current_count = task_count
+    
+#     IF current_count >= MAX_TASKS THEN
+#         PRINT "Maximum task limit reached"
+#         RETURN
+#     END IF
+    
+#     // Store task data in arrays
+#     task_ids[current_count] = current_count
+#     task_stages[current_count] = 0              // TO DO stage
+#     task_priorities[current_count] = priority
+#     task_statuses[current_count] = 0            // ACTIVE status
+    
+#     COPY title TO task_titles[current_count] (40 bytes)
+#     COPY deadline TO task_deadlines[current_count] (10 bytes)
+    
+#     task_count++
+# END FUNCTION
 create_new_task:
     # Save return address
     addi $sp, $sp, -4
@@ -1251,6 +1420,33 @@ task_limit_reached:
     addi $sp, $sp, 4
     jr $ra
 
+# FUNCTION move_task():
+#     PRINT "MOVE TASK"
+    
+#     IF no_active_tasks THEN
+#         PRINT "No tasks to move"
+#         RETURN
+#     END IF
+    
+#     CALL display_task_list()
+    
+#     task_index = get_and_validate_task_id()
+    
+#     IF get_user_confirmation() = NO THEN
+#         PRINT "Move operation cancelled"
+#         RETURN
+#     END IF
+    
+#     new_stage = get_target_stage()              // 0-3
+    
+#     // Log completion if moving to DONE
+#     IF new_stage = 3 THEN
+#         CALL log_task_completion(task_index)
+#     END IF
+    
+#     task_stages[task_index] = new_stage
+#     PRINT "Task moved successfully"
+# END FUNCTION
 move_task:
     # Save return address
     addi $sp, $sp, -4
@@ -1424,7 +1620,17 @@ stage_input_done:
     # Check if task is being moved to DONE (stage 3)
     beq $t1, 3, log_task_completion
     j skip_logging
+
+# FUNCTION log_task_completion(task_index):
+#     OPEN log_file FOR appending
     
+#     WRITE "✓ " + task_titles[task_index]
+#     WRITE " - Priority: " + priority_text[task_priorities[task_index]]
+#     WRITE " - Deadline: " + task_deadlines[task_index]
+#     WRITE newline
+    
+#     CLOSE file
+# END FUNCTION
 log_task_completion:
     # Open log file for appending
     li $v0, 13          # Open file syscall
@@ -1660,7 +1866,27 @@ cancel_move:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     j main_loop
+
+# FUNCTION delete_task():
+#     PRINT "DELETE TASK"
     
+#     IF no_active_tasks THEN
+#         PRINT "No tasks to delete"
+#         RETURN
+#     END IF
+    
+#     CALL display_task_list()
+    
+#     task_index = get_and_validate_task_id()
+    
+#     IF get_user_confirmation() = NO THEN
+#         PRINT "Delete operation cancelled"
+#         RETURN
+#     END IF
+    
+#     task_statuses[task_index] = 1               // Mark as DELETED
+#     PRINT "Task deleted successfully"
+# END FUNCTION
 delete_task:
     # Save return address
     addi $sp, $sp, -4
@@ -2580,6 +2806,25 @@ print_done_list:
    addi $sp, $sp, 4
    jr $ra
     
+# FUNCTION view_history():
+#     TRY
+#         OPEN log_file FOR reading
+        
+#         IF file_not_found THEN
+#             PRINT "No save file found"
+#             RETURN
+#         END IF
+        
+#         READ entire_file_content
+#         PRINT file_content                      // Show completed tasks log
+        
+#         CLOSE file
+#     CATCH file_error:
+#         PRINT "Error reading log file"
+#     END TRY
+    
+#     WAIT for_enter_key
+# END FUNCTION
 view_history:
     # Save return address
     addi $sp, $sp, -4
@@ -2673,6 +2918,22 @@ log_file_empty:
     j main_loop
 
 # Save board function
+# FUNCTION save_board():
+#     OPEN save_file FOR writing
+#     WRITE "ID,TITLE,PRIORITY,STAGE,DEADLINE,STATUS\r\n"
+    
+#     FOR each_task FROM 0 TO task_count-1:
+#         WRITE task_ids[task] + ","
+#         WRITE task_titles[task] (trimmed) + ","
+#         WRITE task_priorities[task] + ","
+#         WRITE task_stages[task] + ","
+#         WRITE task_deadlines[task] + ","
+#         WRITE task_statuses[task] + "\r\n"
+#     END FOR
+    
+#     CLOSE file
+#     PRINT "Data has been saved"
+# END FUNCTION
 save_board:
     # Save return address
     addi $sp, $sp, -4
@@ -2986,7 +3247,41 @@ clear_loop:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-    
+
+# FUNCTION load_board():
+#     TRY
+#         OPEN load_file FOR reading
+        
+#         IF file_not_found THEN
+#             PRINT "No save file found. Starting with empty board"
+#             RETURN
+#         END IF
+        
+#         READ entire_file INTO buffer
+#         CLOSE file
+        
+#         task_count = 0
+#         SKIP header_line
+        
+#         WHILE more_data_lines:
+#             line_data = parse_csv_line()
+            
+#             task_ids[task_count] = line_data.id
+#             task_titles[task_count] = line_data.title
+#             task_priorities[task_count] = line_data.priority
+#             task_stages[task_count] = line_data.stage
+#             task_deadlines[task_count] = line_data.deadline
+#             task_statuses[task_count] = line_data.status
+            
+#             task_count++
+#         END WHILE
+        
+#         PRINT "Data has been loaded"
+        
+#     CATCH file_error:
+#         PRINT "Error loading file"
+#     END TRY
+# END FUNCTION
 load_board:
     # Save return address
     addi $sp, $sp, -4
@@ -3129,6 +3424,18 @@ file_not_found_error:
 
 # Parse a CSV line starting at the position in $a0
 # Updates $s1 to point to the next line
+# FUNCTION parse_csv_line(line):
+#     fields = SPLIT line BY comma
+    
+#     RETURN {
+#         id: CONVERT fields[0] TO integer,
+#         title: fields[1] (up to 40 chars),
+#         priority: CONVERT fields[2] TO integer (0-2),
+#         stage: CONVERT fields[3] TO integer (0-3),
+#         deadline: fields[4] (exactly 10 chars),
+#         status: CONVERT fields[5] TO integer (0-1)
+#     }
+# END FUNCTION
 parse_csv_line:
     # Save registers (NOTE: Don't save $s1 since we need to update it)
     addi $sp, $sp, -16
