@@ -151,11 +151,12 @@ main:
     # Load board data from file at startup
     jal load_board
     
-    # Display welcome message when program first starts
-    jal display_menu
-    
     # Main program loop
     main_loop:
+
+	# Display welcome message when program first starts
+    	jal display_menu
+
         # Get user choice
         jal get_user_choice
         
