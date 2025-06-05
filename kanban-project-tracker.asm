@@ -35,7 +35,7 @@ priority_end:        .asciiz " priority.\n"
 # Delete Task strings
 delete_task_header:  .asciiz "\n----- DELETE TASK -----\n"
 no_tasks_message:    .asciiz "\nThere are no tasks to delete.\n"
-task_prompt:         .asciiz "Enter Task Number to Delete: "
+task_prompt:         .asciiz "Enter Task Number to Process: "
 invalid_task_id:     .asciiz "\nInvalid task number. Please try again.\n"
 confirm_delete:      .asciiz "\nAre you sure you want to delete this task? (1=Yes, 0=No): "
 task_deleted:        .asciiz "\n? Task \""
@@ -1847,6 +1847,12 @@ cancel_delete:
 #----------------------------------------------------
 # Display list of active tasks
 #----------------------------------------------------
+# Example output:
+# ----- MOVE TASK -----
+# [0] finish asm presentat
+# [1] finish webdev code
+# Enter Task Number to Move:
+
 display_task_list:
     # Save return address
     addi $sp, $sp, -4
@@ -1892,6 +1898,9 @@ display_task_list:
         li $t3, 0               # Counter for printed chars
         
         print_title_short_loop:
+            # $t2: Pointer to current character in string
+            # $t3: Character counter (0-19)
+            # $a0: Current character being processed
             beq $t3, 20, print_title_short_done  # If we've printed 20 chars, we're done
             lb $a0, 0($t2)                       # Load character
             beqz $a0, print_title_short_done     # If null, we're done
@@ -1901,7 +1910,7 @@ display_task_list:
             li $v0, 11          # Print character syscall
             syscall
             
-            addi $t2, $t2, 1    # Move to next character
+            addi $t2, $t2, 1    # Move to next character in task_titles
             addi $t3, $t3, 1    # Increment counter
             j print_title_short_loop
             
