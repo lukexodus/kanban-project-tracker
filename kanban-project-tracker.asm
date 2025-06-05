@@ -520,7 +520,7 @@ count_active_tasks:
         beq $t0, $t1, count_active_done  # If we've processed all tasks, we're done
         
         # Check if the task is active
-        la $t2, task_statuses
+        la $t2, task_statuses # One byte step
         add $t2, $t2, $t0       # Offset to task status
         lb $t3, 0($t2)          # Load status
         bnez $t3, skip_count    # If status is not 0 (Active), skip this task
@@ -1348,10 +1348,74 @@ have_tasks_move:
     la $a0, move_task_where
     syscall
     
-    # Get integer
-    li $v0, 5
+    # Read string instead of integer to handle invalid input
+    li $v0, 8
+    la $a0, input_buffer
+    li $a1, 4
     syscall
-    # $v0 contains which task field to be moved to
+    
+    # Parse the first character
+    la $t2, input_buffer
+    lb $t3, 0($t2)
+    
+    # Check if it's a valid digit (0-3)
+    blt $t3, 48, invalid_stage_input    # Less than '0'
+    bgt $t3, 51, invalid_stage_input    # Greater than '3'
+    
+    # Convert ASCII to integer
+    addi $v0, $t3, -48
+    
+    # Check if second character is newline or null (single digit input)
+    lb $t4, 1($t2)
+    beq $t4, 10, stage_valid     # Newline
+    beq $t4, 13, stage_valid     # Carriage return
+    beqz $t4, stage_valid        # Null terminator
+    
+    # If we get here, there are extra characters - invalid input
+    j invalid_stage_input
+    
+stage_valid:
+    # Stage is valid, continue with move operation
+    j stage_input_done
+    
+invalid_stage_input:
+    # Display error message
+    li $v0, 4
+    la $a0, invalid_task_field
+    syscall
+    
+    # Ask for stage again
+    li $v0, 4
+    la $a0, move_task_where
+    syscall
+    
+    # Read string instead of integer to handle invalid input
+    li $v0, 8
+    la $a0, input_buffer
+    li $a1, 4
+    syscall
+    
+    # Parse the first character
+    la $t2, input_buffer
+    lb $t3, 0($t2)
+    
+    # Check if it's a valid digit (0-3)
+    blt $t3, 48, invalid_stage_input    # Less than '0'
+    bgt $t3, 51, invalid_stage_input    # Greater than '3'
+    
+    # Convert ASCII to integer
+    addi $v0, $t3, -48
+    
+    # Check if second character is newline or null (single digit input)
+    lb $t4, 1($t2)
+    beq $t4, 10, stage_valid     # Newline
+    beq $t4, 13, stage_valid     # Carriage return
+    beqz $t4, stage_valid        # Null terminator
+    
+    # If we get here, there are extra characters - invalid input
+    j invalid_stage_input
+    
+stage_input_done:
     
     # $t1 contains which stage field to move to
     move $t1, $v0
